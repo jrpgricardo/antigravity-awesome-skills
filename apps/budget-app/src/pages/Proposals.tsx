@@ -1,22 +1,52 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { pdf } from '@react-pdf/renderer';
 import { getCurrentOrganization } from '@/lib/supabase';
 import { useProposals } from '@/hooks/useProposals';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { PROPOSAL_STATUSES } from '@/lib/constants';
 import { formatCurrency } from '@/utils/currency';
-import { Plus } from 'lucide-react';
+import { ProposalPDF } from '@/lib/pdf-generator';
+import { Plus, Edit, Download, ExternalLink, Trash2 } from 'lucide-react';
 
 export function Proposals() {
   const [organizationId, setOrganizationId] = useState<string | null>(null);
-  const { proposals, loading } = useProposals(organizationId);
+  const { proposals, loading, deleteProposal, getProposalWithItems } = useProposals(organizationId);
 
   useEffect(() => {
     getCurrentOrganization().then((org) => {
       if (org) setOrganizationId(org.id);
     });
   }, []);
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Tem certeza que deseja excluir esta proposta?')) {
+      await deleteProposal(id);
+    }
+  };
+
+  const handleDownloadPDF = async (id: string) => {
+    try {
+      const proposal = await getProposalWithItems(id);
+      const blob = await pdf(<ProposalPDF proposal={proposal} />).toBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `proposta-${proposal.title.replace(/\s+/g, '-').toLowerCase()}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Erro ao gerar PDF. Tente novamente.');
+    }
+  };
+
+  const copyPublicLink = (token: string) => {
+    const url = `${window.location.origin}/p/${token}`;
+    navigator.clipboard.writeText(url);
+    alert('Link copiado para a área de transferência!');
+  };
 
   if (loading) {
     return (
@@ -94,12 +124,36 @@ export function Proposals() {
                         {new Date(proposal.created_at).toLocaleDateString('pt-BR')}
                       </td>
                       <td className="py-3 px-4">
-                        <Link
-                          to={`/proposals/${proposal.id}/edit`}
-                          className="text-primary-600 hover:underline"
-                        >
-                          Editar
-                        </Link>
+                        <div className="flex gap-2">
+                          <Link
+                            to={`/proposals/${proposal.id}/edit`}
+                            className="text-primary-600 hover:text-primary-800 p-1"
+                            title="Editar"
+                          >
+                            <Edit size={18} />
+                          </Link>
+                          <button
+                            onClick={() => copyPublicLink(proposal.public_token)}
+                            className="text-blue-600 hover:text-blue-800 p-1"
+                            title="Copiar link público"
+                          >
+                            <ExternalLink size={18} />
+                          </button>
+                          <button
+                            onClick={() => handleDownloadPDF(proposal.id)}
+                            className="text-green-600 hover:text-green-800 p-1"
+                            title="Download PDF"
+                          >
+                            <Download size={18} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(proposal.id)}
+                            className="text-red-600 hover:text-red-800 p-1"
+                            title="Excluir"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
